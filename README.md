@@ -4,9 +4,9 @@ Open-source mining infrastructure for QSDM. The first part is **PULSE** (Payout,
 
 ## PULSE in one paragraph
 
-Members mine with their own enrolled NVIDIA GPU and wallet, exactly as solo miners do. They also send the pool easier "shares". The pool keeps a TIDES-style PPLNS window, the newest shares worth 8x the network difficulty by default. For each block in which members' proofs are paid, it signs a settlement batch with its ML-DSA-87 key. The **chain** then splits that reward among members by the batch's weights and pays each member directly. The pool never holds CELL.
+Members mine with their own enrolled NVIDIA GPU and wallet, exactly as solo miners do. They join a pool with one signed transaction; from then on their mining rewards collect in a keyless escrow account that nobody can spend from, the pool included. They also send the pool easier "shares". The pool keeps a TIDES-style PPLNS window, the newest shares worth 8x the network difficulty by default. For each block in which members' proofs are paid, it signs a settlement batch with its ML-DSA-87 key. The **chain** then splits that reward among members by the batch's weights and pays each member directly. The pool never holds CELL.
 
-**Status:** phase 1. The pool server, the protocol and their tests are here. The chain rule is a separate, inactive change to the QSDM node: it does nothing until a release sets its activation height. Until then the pool runs in preview and pays nothing.
+**Status:** the chain rule is part of QSDM node release rc1114 and binds from block **1,210,000** (about 26-27 November 2026); until then a pool runs in preview and pays nothing. The project's pool runs at **[qsdm.tech/pool](https://qsdm.tech/pool)** (fee 1 %, capped by the network at 3 %). Rule details: [PULSE in the QSDM docs](https://github.com/blackbeardONE/QSDM/blob/main/QSDM/docs/docs/PULSE.md).
 
 ## Defaults (all in the config)
 

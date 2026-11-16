@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// Vectors printed by QSDM's own pkg/mining (HL2 b6b3fba) for the same inputs:
+// Vectors printed by QSDM's own pkg/mining (release rc1113 source) for the same inputs:
 // epoch 7, root[i]=i, header[i]=255-i, batch_root[i]=7i, N=4096,
 // nonce[0]=0xAB, nonce[15]=k.
 var golden = []struct{ mix, hash string }{

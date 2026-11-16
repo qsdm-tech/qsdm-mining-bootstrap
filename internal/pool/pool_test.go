@@ -28,7 +28,7 @@ var liveWork = func() []byte {
 }()
 
 // fakeProducer serves /status, /mining/work and the PULSE routes like the
-// QSDM producer (hl2-pulse): it checks every settle envelope's signature with
+// QSDM producer (release rc1114): it checks every settle envelope's signature with
 // the shared signing bytes and records it.
 type fakeProducer struct {
 	tip, act  uint64
