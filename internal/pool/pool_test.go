@@ -27,17 +27,47 @@ var liveWork = func() []byte {
 	return b
 }()
 
-// fakeProducer serves /status and /mining/work like the QSDM producer.
+// fakeProducer serves /status, /mining/work and the PULSE routes like the
+// QSDM producer (hl2-pulse): it checks every settle envelope's signature with
+// the shared signing bytes and records it.
 type fakeProducer struct {
-	tip, act uint64
+	tip, act  uint64
+	escrowed  []EscrowedProof
+	nonce     uint64
+	submitted []pulse.Envelope
 }
+
+func (f *fakeProducer) active() bool { return f.act > 0 && f.tip+1 >= f.act }
 
 func (f *fakeProducer) handler() http.Handler {
 	m := http.NewServeMux()
 	m.HandleFunc("/api/v1/status", func(w http.ResponseWriter, _ *http.Request) {
-		fmt.Fprintf(w, `{"chain_tip":%d,"pulse_activation_height":%d}`, f.tip, f.act)
+		fmt.Fprintf(w, `{"chain_tip":%d,"pulse_activation_height":%d,"pulse_active":%v}`, f.tip, f.act, f.active())
 	})
 	m.HandleFunc("/api/v1/mining/work", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write(liveWork) })
+	m.HandleFunc("/api/v1/pulse/state", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"active": f.active(),
+			"pools": []ChainPool{{ID: r.URL.Query().Get("pool"), MaxFeeBPS: 300}},
+			"pool":  chainPoolState{Escrowed: f.escrowed, AccountNonce: f.nonce, AccountPresent: true}})
+	})
+	m.HandleFunc("/api/v1/pulse/submit-signed", func(w http.ResponseWriter, r *http.Request) {
+		var env pulse.Envelope
+		if err := json.NewDecoder(r.Body).Decode(&env); err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+		pkb, _ := hex.DecodeString(env.PublicKey)
+		pk, err := pulse.ParsePublicKey(pkb)
+		sig, _ := hex.DecodeString(env.Signature)
+		if err != nil || string(pulse.AddressOf(pk)) != env.Sender || env.Nonce != f.nonce ||
+			!pulse.Verify(pk, "", pulse.TxSigningBytes(env.Sender, env.Nonce, env.Fee, env.Payload), sig) {
+			http.Error(w, "bad envelope", 422)
+			return
+		}
+		f.nonce++
+		f.submitted = append(f.submitted, env)
+		fmt.Fprintf(w, `{"tx_id":"pulse-%s-%d","status":"accepted"}`, env.Sender, env.Nonce)
+	})
 	return m
 }
 
@@ -169,8 +199,16 @@ func TestEndToEndPreviewThenSettlement(t *testing.T) {
 	if _, err := p.Settle(1_118_167); err == nil {
 		t.Fatal("settled before the activation height")
 	}
-	// The chain rule turns on.
+	// Each accepted share carries the pool's signed receipt.
+	pub := hex.EncodeToString(key.Pub.Bytes())
+	if r.Receipt == nil || !pulse.VerifyReceipt(pub, *r.Receipt, r.ReceiptSig) || r.Receipt.Owner != alice.k.ID() {
+		t.Fatalf("share receipt %+v", r.Receipt)
+	}
+	// The chain rule turns on; alice's mined reward of 3 CELL is escrowed.
 	fp.act, fp.tip = 1_118_160, 1_118_170
+	fp.escrowed = []EscrowedProof{{ProofID: "proof-a", Owner: string(alice.k.ID()), Dust: 300_000_000, Height: 1_118_165},
+		// carol has no shares in the window: the chain would refuse her proof, so the pool must not list it
+		{ProofID: "proof-c", Owner: strings.Repeat("c", 64), Dust: 100_000_000, Height: 1_118_165}}
 	if err := p.ReportProof(alice.tok, "proof-a"); err != nil {
 		t.Fatal(err)
 	}
@@ -190,13 +228,40 @@ func TestEndToEndPreviewThenSettlement(t *testing.T) {
 	if nb != 1 || rec.Seq != 1 || len(rec.Weights) != 2 {
 		t.Fatalf("batches %d %+v", nb, rec)
 	}
+	// Submitted to the node as a signed settle tx; the record keeps the tx ID.
+	if len(fp.submitted) != 1 || rec.TxID == "" {
+		t.Fatalf("submitted %d, tx id %q", len(fp.submitted), rec.TxID)
+	}
+	// Anyone can recompute the weights from the published window log.
+	rw, _, err := pulse.RecomputeWindow(rec.Window, rec.Target)
+	if err != nil || len(rw) != len(rec.Weights) || rw[0] != rec.Weights[0] || rw[1] != rec.Weights[1] {
+		t.Fatalf("recomputed window %v vs %v (%v)", rw, rec.Weights, err)
+	}
+	// Expected payouts: 3 CELL split 128:64 (fee 0 in this test).
+	exp := map[pulse.Address]uint64{}
+	for _, py := range rec.Expected {
+		exp[py.To] = py.Amount
+	}
+	if exp[alice.k.ID()] != 200_000_000 || exp[bob.k.ID()] != 100_000_000 {
+		t.Fatalf("expected payouts %v", exp)
+	}
+	// Per-address stats and CSV need no account.
+	st := p.Address(bob.k.ID())
+	if len(st.Workers) != 1 || st.Workers[0].Worker != "gpu" || st.ExpectedDust != 100_000_000 || st.WindowWeight != 64 {
+		t.Fatalf("bob stats %+v", st)
+	}
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, httptest.NewRequest("GET", "/pool/api/v1/address/"+string(bob.k.ID())+"/payouts.csv", nil))
+	if rr.Code != 200 || !strings.Contains(rr.Body.String(), "1.00000000,member,"+rec.TxID) {
+		t.Fatalf("payouts csv %d %q", rr.Code, rr.Body.String())
+	}
 	body, _ := hex.DecodeString(rec.BodyHex)
 	sig, _ := hex.DecodeString(rec.SigHex)
 	if !pulse.Verify(key.Pub, pulse.BatchDomain, body, sig) {
 		t.Fatal("batch signature")
 	}
 	b, err := pulse.DecodeBatch(body)
-	if err != nil || b.FeeBPS != 0 || string(b.FeeTo) != feeAddr() || b.ProofIDs[0] != "proof-a" {
+	if err != nil || b.FeeBPS != 0 || string(b.FeeTo) != feeAddr() || len(b.ProofIDs) != 1 || b.ProofIDs[0] != "proof-a" {
 		t.Fatalf("%v %+v", err, b)
 	}
 	got := map[pulse.Address]uint64{}

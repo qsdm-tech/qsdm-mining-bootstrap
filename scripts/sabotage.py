@@ -35,6 +35,27 @@ CASES = [
 ]
 
 
+# phase 2 (2026-11-16)
+CASES += [
+    ("receipt verifies under any key", "pulse/tx.go",
+     "\tif err != nil || AddressOf(pk) != r.Pool {", "\tif err != nil {", "./pulse/"),
+    ("receipt signature not checked", "pulse/tx.go",
+     "\treturn Verify(pk, ReceiptDomain, ReceiptBytes(r), sig)", "\treturn sig != nil", "./pulse/"),
+    ("tx signing bytes drift from the node", "pulse/tx.go",
+     "strconv.FormatFloat(fee, 'f', -1, 64)", "strconv.FormatFloat(fee, 'g', -1, 64)", "./pulse/"),
+    ("fee above the network cap", "internal/pool/pool.go",
+     "\tif c.FeeBPS > NetworkMaxFeeBPS || c.FeeNextBPS > NetworkMaxFeeBPS {", "\tif false {", "./internal/pool/"),
+    ("fee change before its date", "internal/pool/pool.go",
+     "&& !t.Before(from) {", "{", "./internal/pool/"),
+    ("escrow of an owner outside the window settled", "internal/pool/pool.go",
+     "e.Height <= height && inWindow[pulse.Address(e.Owner)] &&", "e.Height <= height &&", "./internal/pool/"),
+    ("no receipt for an accepted share", "internal/pool/pool.go",
+     "\tres.Receipt, res.ReceiptSig = &rc, sig", "\t_ = sig", "./internal/pool/"),
+    ("window log not newest first", "internal/pool/pool.go",
+     "\tfor i := len(p.shares) - 1; i >= 0 && sum < target; i-- {\n\t\ts := p.shares[i]", "\tfor i := 0; i < len(p.shares) && sum < target; i++ {\n\t\ts := p.shares[i]", "./internal/pool/"),
+]
+
+
 def main() -> int:
     env = dict(os.environ, GOFLAGS="-p=2")
     caught = 0

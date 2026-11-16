@@ -27,6 +27,9 @@ func (p *Pool) Handler() http.Handler {
 	m.HandleFunc("GET /pool/api/v1/work", p.hWork)
 	m.HandleFunc("POST /pool/api/v1/shares", p.hShare)
 	m.HandleFunc("POST /pool/api/v1/proofs", p.hProof)
+	m.HandleFunc("GET /pool/api/v1/address/{addr}", p.hAddress)
+	m.HandleFunc("GET /pool/api/v1/address/{addr}/shares.csv", p.hAddressShares)
+	m.HandleFunc("GET /pool/api/v1/address/{addr}/payouts.csv", p.hAddressPayouts)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r.Body = http.MaxBytesReader(w, r.Body, MaxBody)
 		w.Header().Set("Cache-Control", "no-store")
@@ -41,7 +44,9 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
-func fail(w http.ResponseWriter, code int, msg string) { writeJSON(w, code, map[string]string{"error": msg}) }
+func fail(w http.ResponseWriter, code int, msg string) {
+	writeJSON(w, code, map[string]string{"error": msg})
+}
 
 func token(r *http.Request) string {
 	return strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
@@ -75,11 +80,15 @@ func (p *Pool) hInfo(w http.ResponseWriter, _ *http.Request) {
 	}
 	writeJSON(w, 200, map[string]any{
 		"name": "PULSE", "pool_id": p.key.ID(), "public_key": hex.EncodeToString(p.key.Pub.Bytes()),
-		"mode": mode, "note": note, "fee_bps": p.cfg.FeeBPS, "fee_to": strings.ToLower(p.cfg.FeeTo),
-		"window_factor": p.cfg.WindowFactor, "payout_floor_dust": p.cfg.FloorDust,
+		"mode": mode, "note": note, "fee_bps": p.cfg.FeeAt(p.now()), "fee_to": strings.ToLower(p.cfg.FeeTo),
+		"fee_network_cap_bps": NetworkMaxFeeBPS, "fee_notice_days": p.cfg.FeeNoticeDays,
+		"fee_next":         map[string]any{"bps": p.cfg.FeeNextBPS, "from": p.cfg.FeeNextFrom},
+		"authorized_pools": c.Pools,
+		"rules_note":       "Every authorized pool is paid by the same chain rule: the network caps every pool's fee at 3 % and settles every batch the same way.",
+		"window_factor":    p.cfg.WindowFactor, "payout_floor_dust": p.cfg.FloorDust,
 		"share_difficulty": p.cfg.ShareDifficulty, "min_share_difficulty": p.cfg.MinShareDiff,
 		"preview_accepts_shares": p.cfg.PreviewShares,
-		"chain": map[string]any{"tip": c.Tip, "activation_height": c.ActivationHeight, "active": c.Active(), "error": c.Err},
+		"chain":                  map[string]any{"tip": c.Tip, "activation_height": c.ActivationHeight, "active": c.Active(), "error": c.Err},
 	})
 }
 

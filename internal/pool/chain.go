@@ -47,12 +47,22 @@ func (pl *Poller) Once(ctx context.Context) error {
 	var st struct {
 		ChainTip              uint64 `json:"chain_tip"`
 		PulseActivationHeight uint64 `json:"pulse_activation_height"`
+		PulseActive           bool   `json:"pulse_active"`
 	}
 	if err := json.Unmarshal(sb, &st); err != nil {
 		return err
 	}
 	prev := pl.Pool.chainTip()
-	pl.Pool.SetChain(ChainStatus{Tip: st.ChainTip, ActivationHeight: st.PulseActivationHeight, Seen: pl.Pool.now()})
+	pl.Pool.mu.Lock()
+	pools := pl.Pool.chain.Pools
+	pl.Pool.mu.Unlock()
+	pl.Pool.SetChain(ChainStatus{Tip: st.ChainTip, ActivationHeight: st.PulseActivationHeight, PulseActive: st.PulseActive,
+		Pools: pools, Seen: pl.Pool.now()})
+	if st.PulseActivationHeight > 0 {
+		if err := pl.FetchChainState(ctx); err != nil {
+			return err
+		}
+	}
 	wb, err := pl.get(ctx, "/mining/work")
 	if err != nil {
 		return err
@@ -60,9 +70,13 @@ func (pl *Poller) Once(ctx context.Context) error {
 	if _, err := pl.Pool.AddJob(wb); err != nil {
 		return err
 	}
-	if st.ChainTip > prev {
-		if _, err := pl.Pool.Settle(st.ChainTip); err != nil && pl.Pool.chainActive() {
+	if st.ChainTip > prev && st.PulseActive {
+		rec, err := pl.Pool.Settle(st.ChainTip)
+		if err != nil {
 			return err
+		}
+		if rec != nil {
+			return pl.Submit(ctx, rec)
 		}
 	}
 	return nil

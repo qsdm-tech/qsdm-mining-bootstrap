@@ -27,6 +27,9 @@ type Event struct {
 	Solution   bool         `json:"solution,omitempty"`
 	ProofID    string       `json:"proof_id,omitempty"`
 	Batch      *BatchRecord `json:"batch,omitempty"`
+	Index      uint64       `json:"index,omitempty"` // share: the pool's running share number
+	Seq        uint64       `json:"seq,omitempty"`   // submitted: the batch
+	TxID       string       `json:"tx_id,omitempty"` // submitted: the node's tx ID
 }
 
 // Journal is an append-only JSON-lines file, fsynced on every append.
