@@ -20,9 +20,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/blackbeardONE/qsdm-mining-bootstrap/internal/pool"
-	"github.com/blackbeardONE/qsdm-mining-bootstrap/pulse"
 	"github.com/cloudflare/circl/sign/mldsa/mldsa87"
+	"github.com/qsdm-tech/qsdm-mining-bootstrap/internal/pool"
+	"github.com/qsdm-tech/qsdm-mining-bootstrap/pulse"
 )
 
 func main() {
@@ -142,7 +142,12 @@ func serve(args []string) error {
 	go pl.Run(ctx, time.Duration(cfg.PollSeconds)*time.Second, log.Printf)
 	srv := &http.Server{Addr: cfg.Listen, Handler: p.Handler(), ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second}
-	go func() { <-ctx.Done(); sc, c := context.WithTimeout(context.Background(), 5*time.Second); defer c(); _ = srv.Shutdown(sc) }()
+	go func() {
+		<-ctx.Done()
+		sc, c := context.WithTimeout(context.Background(), 5*time.Second)
+		defer c()
+		_ = srv.Shutdown(sc)
+	}()
 	log.Printf("PULSE pool %s listening on %s (fee %d bps, window %dx)", k.ID(), cfg.Listen, cfg.FeeBPS, cfg.WindowFactor)
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return err

@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/blackbeardONE/qsdm-mining-bootstrap/pulse"
+	"github.com/qsdm-tech/qsdm-mining-bootstrap/pulse"
 )
 
 func TestFeeIsCappedAndChangesOnlyAfterNotice(t *testing.T) {

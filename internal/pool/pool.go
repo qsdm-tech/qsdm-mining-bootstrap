@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/blackbeardONE/qsdm-mining-bootstrap/internal/qsdmpow"
-	"github.com/blackbeardONE/qsdm-mining-bootstrap/pulse"
+	"github.com/qsdm-tech/qsdm-mining-bootstrap/internal/qsdmpow"
+	"github.com/qsdm-tech/qsdm-mining-bootstrap/pulse"
 )
 
 // RegisterDomain separates miner registration signatures.

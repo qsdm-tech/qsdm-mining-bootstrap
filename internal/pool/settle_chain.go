@@ -10,7 +10,7 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/blackbeardONE/qsdm-mining-bootstrap/pulse"
+	"github.com/qsdm-tech/qsdm-mining-bootstrap/pulse"
 )
 
 // EscrowedProof is one of the pool's unsettled escrowed proofs on the chain.
