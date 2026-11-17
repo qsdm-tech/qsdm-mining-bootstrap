@@ -1,4 +1,4 @@
-module github.com/blackbeardONE/qsdm-mining-bootstrap
+module github.com/qsdm-tech/qsdm-mining-bootstrap
 
 go 1.26.0
 

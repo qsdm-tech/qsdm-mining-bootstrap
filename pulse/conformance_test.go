@@ -12,14 +12,14 @@ import (
 // Conformance is the vector the QSDM node's internal/pulse must reproduce:
 // the same batch body, a signature that verifies, and the same split.
 type Conformance struct {
-	PublicKey string            `json:"public_key"`
-	PoolID    Address           `json:"pool_id"`
-	Body      string            `json:"body"`
-	Sig       string            `json:"signature"`
-	Pooled    uint64            `json:"pooled"`
+	PublicKey string             `json:"public_key"`
+	PoolID    Address            `json:"pool_id"`
+	Body      string             `json:"body"`
+	Sig       string             `json:"signature"`
+	Pooled    uint64             `json:"pooled"`
 	Owed      map[Address]uint64 `json:"owed"`
 	CapLeft   map[Address]uint64 `json:"cap_left"`
-	Payouts   []Payout          `json:"payouts"`
+	Payouts   []Payout           `json:"payouts"`
 	OwedAfter map[Address]uint64 `json:"owed_after"`
 }
 

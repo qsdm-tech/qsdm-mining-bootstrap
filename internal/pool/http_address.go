@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/blackbeardONE/qsdm-mining-bootstrap/pulse"
+	"github.com/qsdm-tech/qsdm-mining-bootstrap/pulse"
 )
 
 // No accounts: everything here is keyed by the public payout address.

@@ -11,7 +11,7 @@ import (
 	"math/big"
 	"strconv"
 
-	"github.com/blackbeardONE/qsdm-mining-bootstrap/internal/qsdmpow"
+	"github.com/qsdm-tech/qsdm-mining-bootstrap/internal/qsdmpow"
 )
 
 // ProducerWork is GET /api/v1/mining/work on the QSDM producer.
