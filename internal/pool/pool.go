@@ -467,6 +467,9 @@ func (p *Pool) Settle(height uint64) (*BatchRecord, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Only on-chain members of this pool may be weight owners: the chain refuses a settlement naming anyone else,
+	// so shares from an address that never joined (or has left) carry no weight in this batch.
+	weights = memberWeights(weights, cs.Members)
 	if len(weights) == 0 {
 		return nil, nil
 	}
