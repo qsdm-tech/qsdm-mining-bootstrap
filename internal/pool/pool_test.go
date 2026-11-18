@@ -33,6 +33,7 @@ var liveWork = func() []byte {
 type fakeProducer struct {
 	tip, act  uint64
 	escrowed  []EscrowedProof
+	members   []string
 	nonce     uint64
 	submitted []pulse.Envelope
 }
@@ -48,7 +49,7 @@ func (f *fakeProducer) handler() http.Handler {
 	m.HandleFunc("/api/v1/pulse/state", func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"active": f.active(),
 			"pools": []ChainPool{{ID: r.URL.Query().Get("pool"), MaxFeeBPS: 300}},
-			"pool":  chainPoolState{Escrowed: f.escrowed, AccountNonce: f.nonce, AccountPresent: true}})
+			"pool":  chainPoolState{Escrowed: f.escrowed, AccountNonce: f.nonce, AccountPresent: true, Members: f.members}})
 	})
 	m.HandleFunc("/api/v1/pulse/submit-signed", func(w http.ResponseWriter, r *http.Request) {
 		var env pulse.Envelope
@@ -206,6 +207,7 @@ func TestEndToEndPreviewThenSettlement(t *testing.T) {
 	}
 	// The chain rule turns on; alice's mined reward of 3 CELL is escrowed.
 	fp.act, fp.tip = 1_118_160, 1_118_170
+	fp.members = []string{string(alice.k.ID()), string(bob.k.ID())}
 	fp.escrowed = []EscrowedProof{{ProofID: "proof-a", Owner: string(alice.k.ID()), Dust: 300_000_000, Height: 1_118_165},
 		// carol has no shares in the window: the chain would refuse her proof, so the pool must not list it
 		{ProofID: "proof-c", Owner: strings.Repeat("c", 64), Dust: 100_000_000, Height: 1_118_165}}

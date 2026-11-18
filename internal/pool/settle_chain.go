@@ -23,11 +23,14 @@ type EscrowedProof struct {
 
 // chainPoolState is the node's view of this pool (/api/v1/pulse/state?pool=).
 type chainPoolState struct {
-	LastSeq        uint64            `json:"last_seq"`
-	Escrowed       []EscrowedProof   `json:"escrowed"`
-	Owed           map[string]uint64 `json:"owed"`
-	AccountNonce   uint64            `json:"account_nonce"`
-	AccountPresent bool              `json:"account_present"`
+	LastSeq  uint64            `json:"last_seq"`
+	Escrowed []EscrowedProof   `json:"escrowed"`
+	Owed     map[string]uint64 `json:"owed"`
+	// Members are the owners that joined this pool on chain. The chain refuses a settlement that names any other
+	// owner as a weight owner, so the pool signs weights for these owners only.
+	Members        []string `json:"members"`
+	AccountNonce   uint64   `json:"account_nonce"`
+	AccountPresent bool     `json:"account_present"`
 }
 
 // FetchChainState reads the rule's status and this pool's chain state.
@@ -95,4 +98,19 @@ func (pl *Poller) Submit(ctx context.Context, rec *BatchRecord) error {
 	pl.Pool.chainPool.AccountNonce++
 	pl.Pool.mu.Unlock()
 	return pl.Pool.record(Event{Type: "submitted", Seq: rec.Seq, TxID: ok.TxID, At: pl.Pool.now()})
+}
+
+// memberWeights keeps the window weights whose owner is an on-chain member of this pool.
+func memberWeights(ws []pulse.Weight, members []string) []pulse.Weight {
+	in := make(map[pulse.Address]bool, len(members))
+	for _, m := range members {
+		in[pulse.Address(m)] = true
+	}
+	out := ws[:0:0]
+	for _, w := range ws {
+		if in[w.Owner] {
+			out = append(out, w)
+		}
+	}
+	return out
 }
