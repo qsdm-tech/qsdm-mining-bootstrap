@@ -34,8 +34,17 @@ type fakeProducer struct {
 	tip, act  uint64
 	escrowed  []EscrowedProof
 	members   []string
+	pool      string
+	noList    bool // the node does not list members (before rc1116): the pool asks /pulse/member
 	nonce     uint64
 	submitted []pulse.Envelope
+}
+
+func (f *fakeProducer) listed() []string {
+	if f.noList {
+		return nil
+	}
+	return f.members
 }
 
 func (f *fakeProducer) active() bool { return f.act > 0 && f.tip+1 >= f.act }
@@ -49,7 +58,17 @@ func (f *fakeProducer) handler() http.Handler {
 	m.HandleFunc("/api/v1/pulse/state", func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"active": f.active(),
 			"pools": []ChainPool{{ID: r.URL.Query().Get("pool"), MaxFeeBPS: 300}},
-			"pool":  chainPoolState{Escrowed: f.escrowed, AccountNonce: f.nonce, AccountPresent: true, Members: f.members}})
+			"pool":  chainPoolState{Escrowed: f.escrowed, AccountNonce: f.nonce, AccountPresent: true, Members: f.listed()}})
+	})
+	m.HandleFunc("/api/v1/pulse/member", func(w http.ResponseWriter, r *http.Request) {
+		o := r.URL.Query().Get("owner")
+		for _, x := range f.members {
+			if x == o {
+				fmt.Fprintf(w, `{"member":true,"owner":%q,"pool":%q}`, o, f.pool)
+				return
+			}
+		}
+		fmt.Fprintf(w, `{"member":false,"owner":%q,"pool":""}`, o)
 	})
 	m.HandleFunc("/api/v1/pulse/submit-signed", func(w http.ResponseWriter, r *http.Request) {
 		var env pulse.Envelope
@@ -88,7 +107,7 @@ func newTestPool(t *testing.T, preview bool) (*Pool, *pulse.KeyPair, *fakeProduc
 	if err != nil {
 		t.Fatal(err)
 	}
-	fp := &fakeProducer{tip: 1_118_166}
+	fp := &fakeProducer{tip: 1_118_166, pool: string(k.ID())}
 	srv := httptest.NewServer(fp.handler())
 	t.Cleanup(srv.Close)
 	pl := &Poller{Pool: p, API: srv.URL + "/api/v1", Client: srv.Client()}
@@ -345,4 +364,53 @@ func TestHintsAndJobChecks(t *testing.T) {
 		t.Fatal(err, j.WindowTarget)
 	}
 	_ = time.Now
+}
+
+// Shares from an address that never joined carry no weight, also against a node that does not list members yet
+// (the pool asks /pulse/member owner by owner): the settlement pays only the pool's members.
+func TestSettlementWeightsOnlyMembers(t *testing.T) {
+	for _, noList := range []bool{false, true} {
+		p, _, fp, pl, _ := newTestPool(t, true)
+		h := p.Handler()
+		alice := register(t, h, "rig1", "md=128")
+		bob := register(t, h, "gpu", "")
+		j := p.CurrentJob()
+		var count uint32
+		for _, c := range j.Roots {
+			count = c
+		}
+		n1, next := mine(t, p, j, 128, 0)
+		if r := share(t, h, alice, j.ID, n1, count); !r.Accepted {
+			t.Fatalf("%+v", r)
+		}
+		n2, _ := mine(t, p, j, 64, next)
+		if r := share(t, h, bob, j.ID, n2, count); !r.Accepted {
+			t.Fatalf("%+v", r)
+		}
+		fp.act, fp.tip = 1_118_160, 1_118_170
+		fp.noList = noList
+		fp.members = []string{string(alice.k.ID())} // bob never joined
+		fp.escrowed = []EscrowedProof{{ProofID: "proof-a", Owner: string(alice.k.ID()), Dust: 300_000_000, Height: 1_118_165}}
+		if err := p.ReportProof(alice.tok, "proof-a"); err != nil {
+			t.Fatal(err)
+		}
+		if err := pl.Once(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		p.mu.Lock()
+		if len(p.batches) != 1 {
+			p.mu.Unlock()
+			t.Fatalf("noList=%v: batches %d", noList, len(p.batches))
+		}
+		rec := p.batches[0]
+		p.mu.Unlock()
+		if len(rec.Weights) != 1 || rec.Weights[0].Owner != alice.k.ID() {
+			t.Fatalf("noList=%v: weights %v, want alice only", noList, rec.Weights)
+		}
+		for _, py := range rec.Expected {
+			if py.To == bob.k.ID() {
+				t.Fatalf("noList=%v: the non-member is paid %d", noList, py.Amount)
+			}
+		}
+	}
 }

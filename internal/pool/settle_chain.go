@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 
 	"github.com/qsdm-tech/qsdm-mining-bootstrap/pulse"
 )
@@ -47,6 +48,14 @@ func (pl *Poller) FetchChainState(ctx context.Context) error {
 	if err := json.Unmarshal(b, &st); err != nil {
 		return err
 	}
+	if st.Pool != nil && st.Pool.Members == nil {
+		// A node that does not list members yet (before rc1116): ask /pulse/member for every owner with shares.
+		ms, err := pl.membersByLookup(ctx)
+		if err != nil {
+			return err
+		}
+		st.Pool.Members = ms
+	}
 	pl.Pool.mu.Lock()
 	pl.Pool.chain.Pools = st.Pools
 	if st.Pool != nil {
@@ -54,6 +63,36 @@ func (pl *Poller) FetchChainState(ctx context.Context) error {
 	}
 	pl.Pool.mu.Unlock()
 	return nil
+}
+
+// membersByLookup asks the node, owner by owner, which share owners are members of this pool.
+func (pl *Poller) membersByLookup(ctx context.Context) ([]string, error) {
+	pl.Pool.mu.Lock()
+	seen := map[pulse.Address]bool{}
+	for _, s := range pl.Pool.shares {
+		seen[s.Owner] = true
+	}
+	pl.Pool.mu.Unlock()
+	me := string(pl.Pool.key.ID())
+	out := []string{}
+	for owner := range seen {
+		b, err := pl.get(ctx, "/pulse/member?owner="+string(owner))
+		if err != nil {
+			return nil, err
+		}
+		var m struct {
+			Member bool   `json:"member"`
+			Pool   string `json:"pool"`
+		}
+		if err := json.Unmarshal(b, &m); err != nil {
+			return nil, err
+		}
+		if m.Member && m.Pool == me {
+			out = append(out, string(owner))
+		}
+	}
+	sort.Strings(out)
+	return out, nil
 }
 
 // Submit sends a recorded batch to the node as the pool's settle tx.
